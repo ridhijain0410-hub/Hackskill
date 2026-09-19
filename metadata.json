@@ -1,0 +1,6 @@
+{
+  "name": "MITRA ONE",
+  "description": "MITRA ONE - Your Everyday Digital Companion. An AI-powered assistant for senior citizens to navigate digital services easily, safely, and independently.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
