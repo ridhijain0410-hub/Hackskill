@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Send,
   Mic,
@@ -6,28 +6,60 @@ import {
   Sparkles,
   HelpCircle,
   Lightbulb,
-  HeartHandshake
+  HeartHandshake,
+  ShieldCheck,
+  RotateCcw,
+  Globe
 } from 'lucide-react';
-import { ChatMessage } from '../types';
+import { ChatMessage, LanguageCode } from '../types';
 import { COMMON_QUESTIONS } from '../data/mockData';
+import { getLanguageConfig } from '../data/languages';
 import { speakText, playGentleChime } from '../utils/speech';
 
-export const AskMitraOnePage: React.FC = () => {
+interface AskMitraOnePageProps {
+  initialQuestion?: string;
+  onClearInitialQuestion?: () => void;
+  language?: LanguageCode;
+}
+
+export const AskMitraOnePage: React.FC<AskMitraOnePageProps> = ({
+  initialQuestion,
+  onClearInitialQuestion,
+  language = 'en',
+}) => {
+  const langConfig = getLanguageConfig(language);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-1',
       sender: 'mitra-one',
-      text: 'Namaste! I am your Mitra One. You can ask me anything about using your smartphone, WhatsApp, booking taxis, online doctor appointments, or paying bills. I will explain everything in simple words without technical jargon.',
+      text:
+        language === 'hi'
+          ? 'नमस्ते! मैं आपका मित्रा वन (Mitra One) हूँ। आप मुझसे स्मार्टफोन, व्हाट्सएप, डॉक्टर अपॉइंटमेंट या बिल भुगतान के बारे में कोई भी प्रश्न पूछ सकते हैं। मैं सरल शब्दों में समझाऊँगा।'
+          : 'Namaste! I am your Mitra One. You can ask me anything about using your smartphone, WhatsApp, booking taxis, online doctor appointments, or paying bills. I will explain everything in simple words without technical jargon.',
       timestamp: 'Just now',
-      tips: 'You can tap any of the popular questions below, or type your own question in the box at the bottom.',
+      tips:
+        language === 'hi'
+          ? 'आप नीचे दिए गए किसी भी लोकप्रिय प्रश्न पर टैप कर सकते हैं, या नीचे अपना प्रश्न लिख सकते हैं।'
+          : 'You can tap any of the popular questions below, or type your own question in the box at the bottom.',
     },
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const processedInitialRef = useRef<string | null>(null);
 
-  const handleSend = (textToSend?: string) => {
+  useEffect(() => {
+    if (initialQuestion && initialQuestion.trim() && processedInitialRef.current !== initialQuestion) {
+      processedInitialRef.current = initialQuestion;
+      handleSend(initialQuestion.trim());
+      if (onClearInitialQuestion) {
+        onClearInitialQuestion();
+      }
+    }
+  }, [initialQuestion]);
+
+  const handleSend = async (textToSend?: string) => {
     const question = (textToSend || inputText).trim();
-    if (!question) return;
+    if (!question || isTyping) return;
 
     playGentleChime('tap');
 
@@ -42,74 +74,18 @@ export const AskMitraOnePage: React.FC = () => {
     setInputText('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      let answerText = '';
-      let steps: string[] = [];
-      let tip = '';
+    try {
+      const res = await fetch('/api/gemini/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, language }),
+      });
 
-      const lower = question.toLowerCase();
+      const data = await res.json();
 
-      if (lower.includes('video call') || lower.includes('whatsapp')) {
-        answerText =
-          'To make a video call on WhatsApp, open WhatsApp, tap your family member’s name, and tap the Video Camera icon 📹 in the top-right corner.';
-        steps = [
-          'Open WhatsApp from your phone screen.',
-          'Tap the name or photo of the person you want to call.',
-          'Look at the top-right corner for the small Video Camera icon 📹.',
-          'Tap the camera icon. The phone will start ringing with video!',
-          'Hold the phone in front of you so they can see your smile.',
-        ];
-        tip = 'If the video looks dark, turn on a nearby room lamp so they can see your face clearly.';
-      } else if (lower.includes('cab') || lower.includes('uber') || lower.includes('ola') || lower.includes('taxi')) {
-        answerText =
-          'Booking a cab on your phone is very convenient. You enter where you want to go, check the price, and choose "Cash" or "UPI".';
-        steps = [
-          'Open Uber or Ola app.',
-          'Tap on the search box that says "Where to?".',
-          'Type the hospital, clinic, or friend’s colony name.',
-          'Select the ride type (e.g. Auto or Mini Cab).',
-          'Tap "Book". The driver name and vehicle number will appear on your screen.',
-        ];
-        tip = 'Always match the vehicle license plate number before sitting in the vehicle.';
-      } else if (lower.includes('train') || lower.includes('irctc') || lower.includes('ticket')) {
-        answerText =
-          'You can book train tickets on IRCTC or confirm your PNR status. Always ask for Senior Citizen lower berth quota when available.';
-        steps = [
-          'Open the IRCTC Rail Connect app.',
-          'Choose your departure and arrival railway stations.',
-          'Select your travel date.',
-          'Select "Lower Berth" preference for senior comfort.',
-        ];
-        tip = 'Keep your Aadhaar card or government ID with you during travel.';
-      } else if (lower.includes('medicine') || lower.includes('order') || lower.includes('pharmacy')) {
-        answerText =
-          'You can order medicines delivered to your doorstep with 15% to 20% discount using apps like Tata 1mg, Apollo 24/7, or Pharmeasy.';
-        steps = [
-          'Open your pharmacy app (Tata 1mg or Apollo).',
-          'Tap "Upload Prescription" and take a clear photo of doctor’s slip.',
-          'A qualified pharmacist calls you to confirm every item.',
-          'Medicines arrive at your door in a sealed safety box.',
-        ];
-        tip = 'You can always choose "Cash on Delivery" so you only pay after holding the medicine box in your hands.';
-      } else if (lower.includes('font') || lower.includes('bigger') || lower.includes('text') || lower.includes('read')) {
-        answerText =
-          'To make letters larger on your smartphone screen, go to your phone Settings and increase the font size.';
-        steps = [
-          'Open the "Settings" app (looks like a gear icon ⚙️).',
-          'Tap "Display" or "Display & Brightness".',
-          'Tap "Font Size" or "Text Size".',
-          'Drag the slider to the right to make all letters comfortable and large.',
-        ];
-        tip = 'Inside Mitra One, tap the A− / A / A+ buttons in the top bar anytime!';
-      } else {
-        answerText = `I hear your question: "${question}". Here is the simplest way to do it:`;
-        steps = [
-          'Take it slow and read one prompt at a time.',
-          'If any screen asks for your bank password or OTP, stop and verify first.',
-          'Tap the "Help" button in the top bar if you ever feel unsure.',
-        ];
-        tip = 'You can also tap the Talk to Mitra One button on the home page to speak by voice!';
-      }
+      let answerText = data.answer || 'I am happy to assist you.';
+      let steps: string[] = Array.isArray(data.steps) ? data.steps : [];
+      let tips: string = data.tips || '';
 
       const mitraMsg: ChatMessage = {
         id: `msg-${Date.now() + 1}`,
@@ -117,14 +93,50 @@ export const AskMitraOnePage: React.FC = () => {
         text: answerText,
         timestamp: 'Just now',
         steps,
-        tips: tip,
+        tips,
       };
 
       setMessages((prev) => [...prev, mitraMsg]);
       setIsTyping(false);
       playGentleChime('success');
-      speakText(answerText);
-    }, 700);
+      speakText(`${answerText}. ${steps.length > 0 ? steps.join('. ') : ''}`, language);
+    } catch (err) {
+      console.error('Error calling /api/gemini/ask:', err);
+      // Fallback response for senior peace of mind in selected language
+      const fallbackText =
+        language === 'hi'
+          ? `मैं आपके प्रश्न "${question}" को समझ रहा हूँ। कृपया एक-एक कदम उठाएं। किसी भी समय आप परिवार के किसी सदस्य से भी पूछ सकते हैं।`
+          : `I am listening to your question: "${question}". Take your time, step by step. If you ever feel stuck, you can also ask your family or tap the Help button in the top bar.`;
+      const fallbackSteps =
+        language === 'hi'
+          ? [
+              'आराम से एक-एक निर्देश पढ़ें।',
+              'कभी भी किसी के साथ अपना बैंक ओटीपी या पिन साझा न करें।',
+              'आप बहुत अच्छा कर रहे हैं।',
+            ]
+          : [
+              'Take it slow and read one prompt at a time.',
+              'Never share any OTP or bank PIN with anyone.',
+              'You are doing wonderfully.',
+            ];
+
+      const mitraMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        sender: 'mitra-one',
+        text: fallbackText,
+        timestamp: 'Just now',
+        steps: fallbackSteps,
+        tips:
+          language === 'hi'
+            ? 'याद रखें: असली बैंक और सरकारी अधिकारी कभी भी आपका गुप्त पासवर्ड या ओटीपी नहीं मांगते।'
+            : 'Remember: Real banks and government officers will never ask for your secret password or OTP.',
+      };
+
+      setMessages((prev) => [...prev, mitraMsg]);
+      setIsTyping(false);
+      playGentleChime('tap');
+      speakText(fallbackText, language);
+    }
   };
 
   const handleVoiceInput = () => {
@@ -142,7 +154,7 @@ export const AskMitraOnePage: React.FC = () => {
 
     try {
       const recognition = new SpeechRecognitionClass();
-      recognition.lang = 'en-US';
+      recognition.lang = langConfig.speechLang;
       recognition.interimResults = false;
 
       playGentleChime('tap');
@@ -153,56 +165,101 @@ export const AskMitraOnePage: React.FC = () => {
         setInputText(text);
         handleSend(text);
       };
+
+      recognition.onerror = () => {
+        // Fallback default sample question if mic blocked
+        setInputText('How do I order medicines online?');
+      };
     } catch {
-      handleSend('How do I order medicines online?');
+      handleSend('How do I make a WhatsApp video call?');
     }
+  };
+
+  const handleResetConversation = () => {
+    playGentleChime('tap');
+    setMessages([
+      {
+        id: `msg-${Date.now()}`,
+        sender: 'mitra-one',
+        text:
+          language === 'hi'
+            ? 'नमस्ते! आपके अगले प्रश्न के लिए तैयार हूँ। आज मैं आपकी क्या मदद कर सकता हूँ?'
+            : 'Namaste! Ready for your next question. How can I help you today?',
+        timestamp: 'Just now',
+        tips:
+          language === 'hi'
+            ? 'नीचे दिए गए सामान्य प्रश्नों पर टैप करें या अपना प्रश्न लिखें।'
+            : 'Tap any common question below or type your own.',
+      },
+    ]);
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
-      {/* Page Header */}
-      <div className="bg-[#0f2942] text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-slate-200 text-xs sm:text-sm font-bold">
-            <HeartHandshake className="w-4 h-4 text-amber-300" />
-            <span>Senior Friendly Digital Guide</span>
+      {/* Page Header matching Reference Screen 8 & requirements */}
+      <div className="bg-white border border-[#e7e3da] rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left">
+        <div className="space-y-1 max-w-xl">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">
+              {langConfig.name} ({langConfig.nativeName})
+            </span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight font-display">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#0f2942] font-display">
             Ask Mitra One
           </h1>
-          <p className="text-slate-300 text-base sm:text-lg">
-            Ask any question. No question is silly. We learn step by step.
+          <p className="text-stone-600 text-sm sm:text-base font-medium">
+            I am here to help you step by step with anything on your phone or online.
           </p>
         </div>
 
-        <button
-          onClick={() =>
-            speakText(
-              'Welcome to Ask Mitra One. Tap any suggested topic or type your question below. I will explain in easy, patient steps.'
-            )
-          }
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm cursor-pointer transition-colors"
-          title="Read instructions aloud"
-        >
-          <Volume2 className="w-4 h-4" />
-          <span>Listen</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {messages.length > 2 && (
+            <button
+              onClick={handleResetConversation}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white hover:bg-stone-50 border border-[#d8d3c7] text-[#0f2942] font-bold text-xs sm:text-sm cursor-pointer transition-colors shadow-2xs"
+              title="Start fresh conversation"
+            >
+              <RotateCcw className="w-4 h-4 text-stone-600" />
+              <span>New Question</span>
+            </button>
+          )}
+
+          <button
+            onClick={() =>
+              speakText(
+                'Ask Mitra One. I am here to help you step by step with anything on your phone or online. Ask any question below or tap a suggested topic.',
+                language
+              )
+            }
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#0f2942] hover:bg-[#1a3a5a] text-white font-extrabold text-xs sm:text-sm cursor-pointer transition-colors shadow-xs"
+            title="Read instructions aloud"
+          >
+            <Volume2 className="w-4 h-4 text-amber-300" />
+            <span>Read Aloud</span>
+          </button>
+        </div>
       </div>
 
-      {/* Suggested Quick Questions */}
-      <div className="space-y-2">
-        <p className="text-sm font-bold text-[#0f2942] px-1">
-          Popular Questions (Tap to ask instantly):
+      {/* Suggested prompt pills (Exact 4 from instructions) */}
+      <div className="space-y-2 text-left">
+        <p className="text-xs font-bold uppercase tracking-wider text-stone-500 px-1">
+          Suggested questions (tap to ask):
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {COMMON_QUESTIONS.map((q, idx) => (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none flex-wrap">
+          {[
+            'How to pay electricity bill',
+            'Send photos on WhatsApp',
+            'Check train PNR status',
+            'Book gas cylinder',
+          ].map((promptText, idx) => (
             <button
               key={idx}
-              onClick={() => handleSend(q.question)}
-              className="p-3.5 rounded-2xl bg-white hover:bg-[#f5f1ea] border border-[#e7e3da] hover:border-[#0f2942] text-stone-800 text-left font-semibold text-sm transition-all shadow-2xs cursor-pointer flex items-start gap-2.5"
+              onClick={() => handleSend(promptText)}
+              className="px-4 py-2 rounded-xl bg-white hover:bg-[#fff8f2] border border-[#d8d3c7] hover:border-[#ea580c] text-[#0f2942] hover:text-[#ea580c] text-xs sm:text-sm font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-2 whitespace-nowrap"
             >
-              <HelpCircle className="w-5 h-5 text-[#ea580c] shrink-0 mt-0.5" />
-              <span>{q.question}</span>
+              <span className="text-amber-600">💡</span>
+              <span>{promptText}</span>
             </button>
           ))}
         </div>
@@ -250,14 +307,16 @@ export const AskMitraOnePage: React.FC = () => {
                         speakText(
                           `${msg.text} ${
                             msg.steps ? msg.steps.join('. ') : ''
-                          } ${msg.tips || ''}`
+                          } ${msg.tips || ''}`,
+                          language
                         )
                       }
-                      className="p-1.5 rounded-lg bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-700 cursor-pointer"
-                      title="Read aloud"
+                      className="p-1.5 rounded-lg bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-700 cursor-pointer flex items-center gap-1 text-xs font-bold"
+                      title="Read aloud in selected language"
                       aria-label="Read message aloud"
                     >
                       <Volume2 className="w-4 h-4" />
+                      <span className="hidden sm:inline">Listen</span>
                     </button>
                   )}
                 </div>
@@ -291,7 +350,7 @@ export const AskMitraOnePage: React.FC = () => {
 
                 {/* Practical Tip if any */}
                 {msg.tips && (
-                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs sm:text-sm font-medium text-emerald-900">
+                  <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs sm:text-sm font-medium text-emerald-900">
                     <Lightbulb className="w-5 h-5 text-[#1b5e3b] shrink-0 mt-0.5" />
                     <div>
                       <strong className="block font-bold">Good to remember:</strong>
@@ -305,53 +364,69 @@ export const AskMitraOnePage: React.FC = () => {
         })}
 
         {isTyping && (
-          <div className="flex items-center gap-2 p-4 bg-white rounded-2xl border border-[#e7e3da] text-stone-600 max-w-xs animate-pulse">
+          <div className="flex items-center gap-2.5 p-4 bg-white rounded-2xl border border-[#e7e3da] text-stone-700 max-w-sm shadow-2xs">
             <Sparkles className="w-5 h-5 text-amber-500 animate-spin" />
-            <span className="text-sm font-bold">Mitra One is thinking for you...</span>
+            <span className="text-sm sm:text-base font-bold text-[#0f2942]">
+              Mitra One is thinking for you...
+            </span>
           </div>
         )}
       </div>
 
-      {/* Input Field at Bottom */}
-      <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md rounded-3xl p-3 sm:p-4 border border-[#e7e3da] shadow-lg space-y-2">
+      {/* Safety Notice Bar */}
+      <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-2xl border border-amber-200 text-amber-900 text-xs sm:text-sm font-medium">
+        <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0" />
+        <span>
+          Mitra One will never ask you for bank passwords, OTPs, PINs, or CVVs. Never share them with anyone.
+        </span>
+      </div>
+
+      {/* Large Input Area at Bottom */}
+      <div className="sticky bottom-4 z-20 bg-white/95 backdrop-blur-md rounded-3xl p-4 sm:p-5 border-2 border-[#e7e3da] shadow-[0_12px_36px_-6px_rgba(15,23,42,0.12)] space-y-2.5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSend();
           }}
-          className="flex items-center gap-2 sm:gap-3"
+          className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3"
         >
-          <input
-            id="ask-mitra-text-input"
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type your question here (e.g. How to book cab?)"
-            className="flex-1 px-4 sm:px-5 py-3.5 sm:py-4 rounded-xl bg-[#fbf9f5] border border-[#d8d3c7] text-[#0f2942] placeholder:text-stone-400 font-medium text-base focus:bg-white transition-all"
-          />
+          <div className="relative flex-1">
+            <input
+              id="ask-mitra-text-input"
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Ask anything (e.g. How do I delete old photos?)"
+              className="w-full px-5 py-4 rounded-2xl bg-[#fbf9f5] border-2 border-[#d8d3c7] text-[#0f2942] placeholder:text-stone-400 font-bold text-base sm:text-lg focus:bg-white focus:border-[#ea580c] transition-all outline-none"
+            />
+          </div>
 
-          <button
-            type="button"
-            id="ask-mitra-voice-input-btn"
-            onClick={handleVoiceInput}
-            className="p-3.5 sm:p-4 rounded-xl bg-[#f5f1ea] hover:bg-[#e7e3da] text-[#0f2942] border border-[#d8d3c7] cursor-pointer transition-colors"
-            title="Speak your question with microphone"
-          >
-            <Mic className="w-6 h-6 text-[#ea580c]" />
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              id="ask-mitra-voice-input-btn"
+              onClick={handleVoiceInput}
+              className="p-4 rounded-2xl bg-[#fff8f2] hover:bg-[#ffedd5] text-[#ea580c] border-2 border-[#fed7aa] cursor-pointer transition-colors shadow-2xs flex items-center justify-center gap-2 font-black text-sm"
+              title="Speak your question with microphone"
+              aria-label="Speak your question"
+            >
+              <Mic className="w-6 h-6 text-[#ea580c]" />
+              <span className="inline sm:hidden font-extrabold">Speak</span>
+            </button>
 
-          <button
-            type="submit"
-            id="ask-mitra-submit-btn"
-            disabled={!inputText.trim()}
-            className="flex items-center gap-2 px-5 sm:px-6 py-3.5 sm:py-4 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] disabled:opacity-40 disabled:hover:bg-[#ea580c] text-white font-extrabold text-base sm:text-lg shadow-xs cursor-pointer transition-all"
-          >
-            <Send className="w-5 h-5" />
-            <span className="hidden sm:inline">Ask</span>
-          </button>
+            <button
+              type="submit"
+              id="ask-mitra-submit-btn"
+              disabled={!inputText.trim() || isTyping}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-7 py-4 rounded-2xl bg-[#ea580c] hover:bg-[#c2410c] disabled:opacity-40 disabled:hover:bg-[#ea580c] text-white font-black text-base sm:text-lg shadow-md cursor-pointer transition-all active:scale-[0.98]"
+            >
+              <Send className="w-5 h-5" />
+              <span>Ask Mitra One</span>
+            </button>
+          </div>
         </form>
-        <p className="text-xs text-stone-500 text-center font-medium">
-          Ask in simple words. Mitra One will always answer gently.
+        <p className="text-xs sm:text-sm text-stone-500 text-center font-medium">
+          Ask in simple words. Mitra One will always answer gently, clearly, and patiently.
         </p>
       </div>
     </div>

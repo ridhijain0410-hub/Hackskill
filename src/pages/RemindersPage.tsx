@@ -10,7 +10,7 @@ import {
   X,
   Heart
 } from 'lucide-react';
-import { ReminderItem } from '../types';
+import { ReminderItem, LanguageCode } from '../types';
 import { speakText, playGentleChime } from '../utils/speech';
 
 interface RemindersPageProps {
@@ -18,6 +18,7 @@ interface RemindersPageProps {
   onToggleReminder: (id: string) => void;
   onAddReminder: (item: Omit<ReminderItem, 'id'>) => void;
   onDeleteReminder: (id: string) => void;
+  language?: LanguageCode;
 }
 
 export const RemindersPage: React.FC<RemindersPageProps> = ({
@@ -25,6 +26,7 @@ export const RemindersPage: React.FC<RemindersPageProps> = ({
   onToggleReminder,
   onAddReminder,
   onDeleteReminder,
+  language = 'en',
 }) => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -53,7 +55,11 @@ export const RemindersPage: React.FC<RemindersPageProps> = ({
     onToggleReminder(item.id);
 
     if (willBeCompleted) {
-      speakText(`Marked ${item.title} as done! Great job taking care of your health.`);
+      const completionSpeech =
+        language === 'hi'
+          ? `${item.title} पूरा हो गया! अपनी सेहत का ध्यान रखने के लिए बहुत बढ़िया काम।`
+          : `Marked ${item.title} as done! Great job taking care of your health.`;
+      speakText(completionSpeech, language);
     }
   };
 
@@ -83,26 +89,26 @@ export const RemindersPage: React.FC<RemindersPageProps> = ({
 
   return (
     <div className="space-y-6 sm:space-y-8 pb-20">
-      {/* Top Banner */}
-      <div className="bg-[#0f2942] text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-slate-200 text-xs sm:text-sm font-bold">
-            <BellRing className="w-4 h-4 text-amber-300" />
-            <span>Medicine & Daily Care Schedule</span>
+      {/* Top Banner in Soft Pastel Peach */}
+      <div className="bg-[#fff8f2] border-2 border-[#fed7aa] rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 text-left">
+        <div className="space-y-2 max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#fed7aa] text-orange-950 text-xs sm:text-sm font-black">
+            <BellRing className="w-4 h-4 text-[#ea580c]" />
+            <span>Medicine & Routine Scheduler</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight font-display">
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-[#0f2942] font-display">
             Reminders
           </h1>
-          <p className="text-slate-300 text-base sm:text-lg">
-            {completedCount} of {reminders.length} tasks completed today.
+          <p className="text-stone-700 text-base sm:text-lg font-medium leading-relaxed">
+            {completedCount} of {reminders.length} tasks completed today. Keep your daily routine organized.
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white font-extrabold text-base sm:text-lg shadow-xs cursor-pointer transition-colors shrink-0"
+          className="flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-[#ea580c] hover:bg-[#c2410c] text-white font-black text-base sm:text-lg shadow-md hover:shadow-lg cursor-pointer transition-all active:scale-[0.98] shrink-0"
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-5 h-5 stroke-[2.5]" />
           <span>Add Reminder</span>
         </button>
       </div>
@@ -212,7 +218,8 @@ export const RemindersPage: React.FC<RemindersPageProps> = ({
                     speakText(
                       `Reminder for ${item.time}: ${item.title}. ${item.details}. ${
                         item.dosage ? 'Dose is ' + item.dosage : ''
-                      }. Status is ${item.completed ? 'completed' : 'pending'}`
+                      }. Status is ${item.completed ? 'completed' : 'pending'}`,
+                      language
                     )
                   }
                   className="p-3 rounded-xl bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-700 border border-[#d8d3c7] cursor-pointer"

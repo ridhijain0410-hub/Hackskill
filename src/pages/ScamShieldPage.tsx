@@ -12,110 +12,160 @@ import {
   ArrowDownLeft,
   ZapOff,
   Smartphone,
-  RotateCcw
+  RotateCcw,
+  Sparkles,
+  MessageSquare,
+  ArrowRight
 } from 'lucide-react';
-import { ScamCheckAnalysis } from '../types';
+import { ScamCheckAnalysis, PageId, LanguageCode } from '../types';
 import { SCAM_RULES } from '../data/mockData';
+import { getLanguageConfig } from '../data/languages';
 import { speakText, playGentleChime } from '../utils/speech';
 
-export const ScamShieldPage: React.FC = () => {
+interface ScamShieldPageProps {
+  onNavigate?: (page: PageId, initialQuestion?: string) => void;
+  language?: LanguageCode;
+}
+
+export const ScamShieldPage: React.FC<ScamShieldPageProps> = ({ onNavigate, language = 'en' }) => {
+  const langConfig = getLanguageConfig(language);
   const [inputText, setInputText] = useState('');
+  const [isChecking, setIsChecking] = useState(false);
   const [analysis, setAnalysis] = useState<ScamCheckAnalysis | null>(null);
 
   const sampleScamTests = [
     {
-      label: 'Electricity Cut Threat',
+      label: 'Sample Electricity Disconnection SMS',
       text: 'Dear consumer, your electricity power will be disconnected tonight at 9.30 pm because your previous month bill was not updated. Please call officer Sharma at 9876543210 immediately.',
     },
     {
-      label: 'Lottery Prize WhatsApp',
+      label: 'Sample Lottery / Gift Prize',
       text: 'Congratulations! Your mobile number won Rs 25,00,000 in Kaun Banega Crorepati lucky draw lottery. Send your bank passbook photo and pay Rs 1,500 registration fee on WhatsApp.',
     },
     {
-      label: 'Legitimate Bank Alert',
-      text: 'INR 500.00 withdrawn from ATM at MG Road on 18-Sep-26. Avail Bal: INR 32,100.00. For queries call 1800-425-3800.',
+      label: 'Sample KYC Update Threat',
+      text: 'Dear Customer, Your SBI Bank account has been blocked today due to pending PAN/KYC update. Click http://bit.ly/sbi-kyc-verify to update immediately or your account will be closed in 24 hours.',
     },
   ];
 
-  const handleCheckScam = (textToCheck?: string) => {
+  const handleCheckScam = async (textToCheck?: string) => {
     const text = (textToCheck || inputText).trim();
-    if (!text) return;
+    if (!text || isChecking) return;
 
     playGentleChime('tap');
-    const lower = text.toLowerCase();
+    setIsChecking(true);
 
-    let result: ScamCheckAnalysis;
+    try {
+      const res = await fetch('/api/gemini/scam-shield', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, language }),
+      });
 
-    if (
-      lower.includes('disconnected tonight') ||
-      lower.includes('power cut') ||
-      lower.includes('lottery') ||
-      lower.includes('won') ||
-      lower.includes('kbc') ||
-      lower.includes('crorepati') ||
-      lower.includes('anydesk') ||
-      lower.includes('teamviewer') ||
-      lower.includes('share otp') ||
-      lower.includes('apk') ||
-      lower.includes('quicksupport') ||
-      lower.includes('registration fee') ||
-      lower.includes('bit.ly') ||
-      lower.includes('ind-post') ||
-      lower.includes('kyc update')
-    ) {
-      result = {
-        verdict: 'danger',
-        headline: '🚨 DANGER: This is Almost Certainly a FRAUD Attempt',
-        explanation:
-          'This message uses urgency, fear, or greed to trick you. Government departments and real banks NEVER threaten immediate same-day disconnection over an SMS, and nobody gives random lottery prizes.',
-        identifiedRedFlags: [
-          'Fake urgency ("Tonight at 9:30 PM", "Within 12 hours")',
-          'Asking you to call an unofficial personal 10-digit mobile number',
-          'Asking for registration fees, OTPs, or suspicious app downloads',
-        ],
-        safeAction:
-          'DO NOT reply. DO NOT call that number. DO NOT send any money or OTP. Delete the message. You are completely safe.',
-        confidence: 'High Risk Scam',
-      };
-    } else if (
-      lower.includes('withdrawn') ||
-      lower.includes('debited') ||
-      lower.includes('credited') ||
-      lower.includes('avail bal')
-    ) {
-      result = {
-        verdict: 'safe',
-        headline: '✅ Standard Bank Transaction Notification',
-        explanation:
-          'This resembles a regular informational bank statement alert. Notice that it does not demand urgent money, does not ask for your secret OTP, and lists an official toll-free number.',
-        identifiedRedFlags: [
-          'No threats of arrest or sudden account closure',
-          'No suspicious link to click',
-          'Only reporting transaction details',
-        ],
-        safeAction:
-          'Check your passbook or bank statement to ensure you made this transaction. If you recognize the amount, no action needed.',
-        confidence: 'Informational Bank Alert',
-      };
-    } else {
-      result = {
-        verdict: 'warning',
-        headline: '⚠️ CAUTION: Verify Before Sharing Anything',
-        explanation:
-          'While this message may not have obvious criminal words, you should always treat unexpected requests with caution.',
-        identifiedRedFlags: [
-          'Always confirm sender identity through family or official office numbers',
-          'Never share passwords or screen access',
-        ],
-        safeAction:
-          'When in doubt, show this to your children or trusted family before taking any action.',
-        confidence: 'Needs Caution',
-      };
+      const data: ScamCheckAnalysis = await res.json();
+      setAnalysis(data);
+      setIsChecking(false);
+
+      playGentleChime(data.verdict === 'danger' ? 'alert' : 'success');
+      speakText(
+        `${data.headline}. ${data.explanation}. What to do: ${data.safeAction}. Remember: ${data.securityAdvice || ''}`,
+        language
+      );
+    } catch (err) {
+      console.error('Error in handleCheckScam:', err);
+      setIsChecking(false);
+
+      // Rule-based fallback for senior protection in chosen language
+      const lower = text.toLowerCase();
+      let fallbackResult: ScamCheckAnalysis;
+
+      if (
+        lower.includes('disconnected tonight') ||
+        lower.includes('power cut') ||
+        lower.includes('lottery') ||
+        lower.includes('won') ||
+        lower.includes('kbc') ||
+        lower.includes('anydesk') ||
+        lower.includes('share otp') ||
+        lower.includes('registration fee')
+      ) {
+        fallbackResult = {
+          verdict: 'danger',
+          verdictLabel: language === 'hi' ? 'उच्च जोखिम (धोखाधड़ी)' : 'High Risk',
+          headline:
+            language === 'hi'
+              ? '🚨 उच्च जोखिम: यह निश्चित रूप से धोखाधड़ी (Scam) का प्रयास है'
+              : '🚨 High Risk: This is Almost Certainly a FRAUD Attempt',
+          explanation:
+            language === 'hi'
+              ? 'यह संदेश आपको जल्दबाजी में डालने का प्रयास कर रहा है। असली बिजली विभाग कभी भी तुरंत बिजली नहीं काटता और न ही लॉटरी में पैसे मांगे जाते हैं।'
+              : 'This message uses fear or greed to rush you into an unsafe action. Real utility offices never disconnect power without weeks of written notice, and lottery wins never ask for registration fees.',
+          identifiedRedFlags:
+            language === 'hi'
+              ? [
+                  'झूठी तात्कालिकता और डर ("आज रात 9:30 बजे बिजली कट जाएगी")',
+                  'व्यक्तिगत 10-अंकीय नंबर दिया गया है',
+                  'तुरंत पैसे भेजने या फोन करने का दबाव',
+                ]
+              : [
+                  'Fake panic and urgency ("Tonight at 9:30 PM")',
+                  'Personal 10-digit phone number instead of official office helpdesk',
+                  'Pressure to pay money or call immediately',
+                ],
+          safeAction:
+            language === 'hi'
+              ? 'जवाब न दें। उस नंबर पर कॉल न करें। कोई पैसे या ओटीपी न भेजें। आप सुरक्षित हैं।'
+              : 'DO NOT reply. DO NOT call that phone number. DO NOT send any money or OTP. Delete the message. You are completely safe.',
+          securityAdvice:
+            language === 'hi'
+              ? 'कभी भी किसी के साथ फोन या संदेश पर अपना ओटीपी, पिन, पासवर्ड या सीवीवी साझा न करें।'
+              : 'Never share your OTP, PIN, password, or CVV with anyone on phone calls or messages.',
+          suggestedMitraQuestion:
+            language === 'hi'
+              ? 'बिजली बिल धोखाधड़ी कैसे काम करती है, और मैं अपना असली बिल कैसे जांच सकता हूँ?'
+              : 'How do electricity disconnection scams work, and how can I check my real bill?',
+        };
+      } else {
+        fallbackResult = {
+          verdict: 'warning',
+          verdictLabel: language === 'hi' ? 'सावधान रहें' : 'Be Careful',
+          headline:
+            language === 'hi'
+              ? '⚠️ सावधानी: कृपया इस संदेश की ध्यान से पुष्टि करें'
+              : '⚠️ Caution: Please Verify This Message Carefully',
+          explanation:
+            language === 'hi'
+              ? 'किसी भी संदेश में पैसे या व्यक्तिगत जानकारी मांगे जाने पर हमेशा रुकें और पुष्टि करें।'
+              : 'Always pause and verify any message that asks for money, personal details, or unexpected action.',
+          identifiedRedFlags:
+            language === 'hi'
+              ? [
+                  'कोई भी कदम उठाने से पहले अपने बैंक या परिवार से पुष्टि करें',
+                  'अपरिचित नंबरों से भेजे गए लिंक पर कभी क्लिक न करें',
+                ]
+              : [
+                  'Always verify with your bank or family before taking action',
+                  'Never click unknown links sent from unknown numbers',
+                ],
+          safeAction:
+            language === 'hi'
+              ? 'कोई बैंक विवरण या गुप्त पासवर्ड साझा न करें। संदेह होने पर परिवार से सलाह लें।'
+              : 'Do not share any bank details or secret passwords. When in doubt, consult family.',
+          securityAdvice:
+            language === 'hi'
+              ? 'कभी भी किसी के साथ अपना ओटीपी, पिन, पासवर्ड या सीवीवी साझा न करें।'
+              : 'Never share your OTP, PIN, password, or CVV with anyone.',
+          suggestedMitraQuestion:
+            language === 'hi'
+              ? 'यदि कोई अज्ञात कॉलर व्यक्तिगत विवरण मांगता है तो मुझे क्या करना चाहिए?'
+              : 'What should I do if an unknown caller asks for personal details?',
+        };
+      }
+
+      setAnalysis(fallbackResult);
+      playGentleChime(fallbackResult.verdict === 'danger' ? 'alert' : 'tap');
+      speakText(`${fallbackResult.headline}. ${fallbackResult.explanation}`, language);
     }
-
-    setAnalysis(result);
-    playGentleChime(result.verdict === 'danger' ? 'alert' : 'success');
-    speakText(`${result.headline}. ${result.explanation}. Recommended action: ${result.safeAction}`);
   };
 
   const getRuleIcon = (icon: string) => {
@@ -135,48 +185,97 @@ export const ScamShieldPage: React.FC = () => {
 
   return (
     <div className="space-y-8 pb-20">
-      {/* Top Banner */}
-      <div className="bg-[#0f2942] text-white rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-slate-200 text-xs sm:text-sm font-bold">
-            <ShieldAlert className="w-4 h-4 text-amber-300" />
-            <span>Senior Digital Safety & Protection</span>
+      {/* Top Banner matching Reference Screen */}
+      <div className="bg-white border border-[#e7e3da] rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left">
+        <div className="space-y-1 max-w-xl">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+            <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">
+              {langConfig.name} ({langConfig.nativeName})
+            </span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight font-display">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#0f2942] font-display">
             Scam Shield
           </h1>
-          <p className="text-slate-300 text-base sm:text-lg max-w-2xl">
-            Never feel scared or pressured. Check if any message or phone call looks suspicious.
+          <p className="text-stone-600 text-sm sm:text-base font-medium">
+            Paste a message, SMS or call details to check if someone is trying to cheat you.
           </p>
         </div>
 
         <button
           onClick={() =>
             speakText(
-              'Welcome to Scam Shield. Never share your OTP with anyone. Check any suspicious message below.'
+              'Scam Shield. Paste a message, SMS or call details to check if someone is trying to cheat you. Never share your secret OTP, PIN or password with anyone.',
+              language
             )
           }
-          className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] text-white font-extrabold text-base cursor-pointer shrink-0 shadow-xs transition-colors"
-          title="Read instructions aloud"
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#0f2942] hover:bg-[#1a3a5a] text-white font-extrabold text-xs sm:text-sm cursor-pointer shrink-0 shadow-xs transition-colors"
+          title="Read instructions aloud in selected language"
         >
-          <Volume2 className="w-5 h-5" />
+          <Volume2 className="w-4 h-4 text-amber-300" />
           <span>Read Aloud</span>
         </button>
       </div>
 
+      {/* Critical Senior Safety Banner */}
+      <div className="bg-[#fff8f2] rounded-2xl p-4 sm:p-5 border border-[#fed7aa] flex items-start gap-3.5 text-stone-800 shadow-xs text-left">
+        <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 font-bold border border-amber-200">
+          <Lock className="w-5 h-5" />
+        </div>
+        <div>
+          <h2 className="text-sm sm:text-base font-black text-[#0f2942]">
+            Privacy First Safety Rule for Seniors:
+          </h2>
+          <p className="text-xs sm:text-sm font-semibold text-stone-700 mt-0.5 leading-relaxed">
+            <strong>NEVER</strong> share your <strong>OTP, ATM PIN, Password, or CVV</strong> number with anyone—even if they claim to be from your bank, police, or electricity department. Genuine officers and MITRA ONE will <strong>never</strong> ask for them.
+          </p>
+        </div>
+      </div>
+
       {/* Interactive Scam Checker Box */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e7e3da] shadow-[0_4px_20px_-4px_rgba(15,23,42,0.05)] space-y-5">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#f5f1ea] text-[#0f2942] flex items-center justify-center font-bold border border-[#e7e3da]">
-            <Lock className="w-6 h-6" />
-          </div>
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#e7e3da] shadow-[0_2px_12px_-2px_rgba(15,23,42,0.04)] space-y-4 text-left">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-3">
           <div>
-            <h2 className="text-2xl font-bold text-[#0f2942] font-display">
-              Check a Suspicious Message or Number
+            <h2 className="text-lg sm:text-xl font-black text-[#0f2942] font-display">
+              Check a Message or Call
             </h2>
-            <p className="text-sm text-stone-600 font-medium">
-              Paste the message below, and Mitra One will tell you if it looks safe or dangerous.
+            <p className="text-xs sm:text-sm text-stone-600 font-medium">
+              Paste the text or describe what the caller asked for. Gemini AI will analyze it immediately.
             </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const clip = await navigator.clipboard.readText();
+                  if (clip) {
+                    setInputText(clip);
+                    handleCheckScam(clip);
+                  }
+                } catch {
+                  // clipboard unavailable
+                }
+              }}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-700 text-xs font-bold border border-[#d8d3c7] cursor-pointer"
+            >
+              <span>📋 Paste</span>
+            </button>
+
+            {inputText && (
+              <button
+                type="button"
+                onClick={() => {
+                  setInputText('');
+                  setAnalysis(null);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-700 text-xs font-bold border border-[#d8d3c7] cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -193,7 +292,7 @@ export const ScamShieldPage: React.FC = () => {
                   setInputText(t.text);
                   handleCheckScam(t.text);
                 }}
-                className="px-3.5 py-1.5 rounded-xl bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-800 text-xs sm:text-sm font-semibold border border-[#d8d3c7] transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-[#f5f1ea] hover:bg-[#e7e3da] text-[#0f2942] text-xs sm:text-sm font-bold border border-[#d8d3c7] transition-colors cursor-pointer"
               >
                 {t.label}
               </button>
@@ -203,106 +302,201 @@ export const ScamShieldPage: React.FC = () => {
 
         {/* Text Area */}
         <textarea
-          rows={3}
+          id="scam-shield-input-text"
+          rows={4}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          placeholder="Paste SMS, WhatsApp forward, or type what the caller told you..."
-          className="w-full p-4 rounded-2xl border border-[#d8d3c7] bg-[#fbf9f5] focus:bg-white text-base sm:text-lg font-medium text-[#0f2942] placeholder:text-stone-400 transition-all"
+          placeholder="Paste SMS, WhatsApp message, or type what the caller told you..."
+          className="w-full p-4 rounded-xl border-2 border-[#d8d3c7] bg-[#fbf9f5] focus:bg-white text-sm sm:text-base font-medium text-[#0f2942] placeholder:text-stone-400 focus:border-[#ea580c] transition-all outline-none"
         />
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center justify-between gap-4 flex-wrap pt-1">
+          <span className="text-xs text-stone-500 font-medium">
+            AI examines caller pressure, fake urgency, suspicious links, and unverified bank demands.
+          </span>
+
           <button
+            id="scam-shield-check-btn"
             onClick={() => handleCheckScam()}
-            disabled={!inputText.trim()}
-            className="flex items-center gap-2 px-7 py-3.5 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] disabled:opacity-40 text-white font-extrabold text-base sm:text-lg shadow-xs cursor-pointer transition-all"
+            disabled={!inputText.trim() || isChecking}
+            className="flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#ea580c] hover:bg-[#c2410c] disabled:opacity-40 text-white font-black text-sm sm:text-base shadow-sm cursor-pointer transition-all active:scale-[0.98]"
           >
-            <ShieldCheck className="w-5 h-5" />
-            <span>Check Safety Now</span>
+            {isChecking ? (
+              <>
+                <Sparkles className="w-4 h-4 animate-spin" />
+                <span>Checking Message...</span>
+              </>
+            ) : (
+              <>
+                <span>Check for Safety</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
-
-          {inputText && (
-            <button
-              onClick={() => {
-                setInputText('');
-                setAnalysis(null);
-              }}
-              className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-[#f5f1ea] hover:bg-[#e7e3da] text-stone-700 font-bold text-sm border border-[#d8d3c7] cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Clear</span>
-            </button>
-          )}
         </div>
+      </div>
 
-        {/* Analysis Result Card */}
-        {analysis && (
-          <div
-            className={`mt-6 p-6 sm:p-7 rounded-3xl border shadow-xs space-y-4 ${
-              analysis.verdict === 'danger'
-                ? 'bg-rose-50/70 border-rose-300 text-rose-950'
-                : analysis.verdict === 'safe'
-                ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
-                : 'bg-amber-50/70 border-amber-300 text-amber-950'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-4">
+      {/* 3 Clear Safety Status Indicator Cards */}
+      <div className="space-y-2 text-left">
+        <span className="text-xs font-bold uppercase tracking-wider text-stone-500 px-1">
+          Safety Status Standards:
+        </span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`p-4 rounded-2xl border-2 transition-all ${analysis?.verdict === 'safe' ? 'bg-[#f0fdf4] border-[#16a34a] ring-2 ring-emerald-500/20' : 'bg-white border-[#e7e3da]'}`}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-[#16a34a] flex items-center justify-center font-black">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white border inline-block mb-2 text-stone-700">
-                  {analysis.confidence}
-                </span>
-                <h3 className="text-xl sm:text-2xl font-black font-display">
-                  {analysis.headline}
-                </h3>
+                <h3 className="font-extrabold text-[#0f2942] text-sm sm:text-base">1. Safe</h3>
+                <p className="text-[11px] text-stone-500 font-medium">Official verified format</p>
               </div>
-
-              <button
-                onClick={() =>
-                  speakText(
-                    `${analysis.headline}. ${analysis.explanation}. Action: ${analysis.safeAction}`
-                  )
-                }
-                className="p-2 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-800 cursor-pointer shrink-0"
-                title="Read verdict aloud"
-              >
-                <Volume2 className="w-5 h-5" />
-              </button>
-            </div>
-
-            <p className="text-base sm:text-lg font-medium leading-relaxed">
-              {analysis.explanation}
-            </p>
-
-            {/* Red flags */}
-            <div className="bg-white/80 rounded-2xl p-4 border border-stone-200/80 space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-600">
-                Identified Indicators:
-              </h4>
-              <div className="space-y-1.5">
-                {analysis.identifiedRedFlags.map((flag, idx) => (
-                  <div key={idx} className="flex items-start gap-2 text-sm sm:text-base font-medium">
-                    {analysis.verdict === 'danger' ? (
-                      <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    )}
-                    <span>{flag}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Safe action to take */}
-            <div className="p-4 rounded-2xl bg-white border border-stone-200 space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-600 block">
-                What you should do:
-              </span>
-              <p className="text-base sm:text-lg font-extrabold text-[#0f2942]">
-                {analysis.safeAction}
-              </p>
             </div>
           </div>
-        )}
+
+          <div className={`p-4 rounded-2xl border-2 transition-all ${analysis?.verdict === 'warning' ? 'bg-[#fffbeb] border-[#f59e0b] ring-2 ring-amber-500/20' : 'bg-white border-[#e7e3da]'}`}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-black">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-[#0f2942] text-sm sm:text-base">2. Suspicious</h3>
+                <p className="text-[11px] text-stone-500 font-medium">Caution needed, verify first</p>
+              </div>
+            </div>
+          </div>
+
+          <div className={`p-4 rounded-2xl border-2 transition-all ${analysis?.verdict === 'danger' ? 'bg-[#fff1f2] border-[#e11d48] ring-2 ring-rose-500/20' : 'bg-white border-[#e7e3da]'}`}>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center font-black">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-[#0f2942] text-sm sm:text-base">3. Danger / Scam</h3>
+                <p className="text-[11px] text-stone-500 font-medium">Fraud attempt detected</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Active Detailed Result Card */}
+      {analysis && (
+        <div
+          className={`p-5 sm:p-7 rounded-2xl border-2 shadow-xs space-y-4 text-left ${
+            analysis.verdict === 'danger'
+              ? 'bg-rose-50/90 border-rose-300 text-rose-950'
+              : analysis.verdict === 'safe'
+              ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+              : 'bg-amber-50/90 border-amber-300 text-amber-950'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span
+                className={`text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full border inline-block mb-2 ${
+                  analysis.verdict === 'danger'
+                    ? 'bg-rose-600 text-white border-rose-700'
+                    : analysis.verdict === 'safe'
+                    ? 'bg-emerald-700 text-white border-emerald-800'
+                    : 'bg-amber-600 text-white border-amber-700'
+                }`}
+              >
+                {analysis.verdict === 'danger' ? 'DANGER / SCAM' : analysis.verdict === 'safe' ? 'SAFE' : 'CAUTION'}
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black font-display">
+                {analysis.headline}
+              </h3>
+            </div>
+
+            <button
+              onClick={() =>
+                speakText(
+                  `${analysis.headline}. ${analysis.explanation}. What you should do now: ${analysis.safeAction}.`,
+                  language
+                )
+              }
+              className="p-2 rounded-xl bg-white hover:bg-stone-50 border border-stone-300 text-stone-800 cursor-pointer shrink-0 shadow-xs"
+              title="Read verdict aloud in selected language"
+            >
+              <Volume2 className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Plain explanation */}
+          <div>
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-600 block mb-1">
+              Why this was flagged:
+            </span>
+            <p className="text-sm sm:text-base font-semibold leading-relaxed">
+              {analysis.explanation}
+            </p>
+          </div>
+
+          {/* Red flags identified */}
+          <div className="bg-white/95 rounded-xl p-4 sm:p-5 border border-stone-200 space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-stone-600">
+              Red Flags Found:
+            </h4>
+            <div className="space-y-2">
+              {analysis.identifiedRedFlags.map((flag, idx) => (
+                <div key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm font-semibold">
+                  {analysis.verdict === 'danger' ? (
+                    <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  ) : analysis.verdict === 'safe' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  )}
+                  <span>{flag}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* What you should do now */}
+          <div className="p-4 rounded-xl bg-white border border-stone-200 space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-600 block">
+              What you should do now:
+            </span>
+            <p className="text-sm sm:text-base font-extrabold text-[#0f2942]">
+              {analysis.safeAction}
+            </p>
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 text-xs font-bold">
+                🚫 Do not click links
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 text-xs font-bold">
+                🔒 Do not share OTP
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-stone-100 text-stone-800 text-xs font-bold">
+                📱 Block the number
+              </span>
+            </div>
+          </div>
+
+          {/* Quick actions: Report Scam or Call 1930 */}
+          <div className="pt-2 flex items-center gap-3 flex-wrap">
+            <a
+              href="tel:1930"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0f2942] hover:bg-[#1a3a5a] text-white font-extrabold text-xs sm:text-sm shadow-xs transition-colors"
+            >
+              <PhoneCall className="w-4 h-4 text-emerald-400" />
+              <span>Call 1930 Cyber Helpline</span>
+            </a>
+
+            {analysis.suggestedMitraQuestion && onNavigate && (
+              <button
+                onClick={() => onNavigate('ask-mitra-one', analysis.suggestedMitraQuestion)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-stone-50 text-[#0f2942] font-bold text-xs sm:text-sm border border-stone-300 cursor-pointer transition-colors shadow-2xs"
+              >
+                <MessageSquare className="w-4 h-4 text-amber-500" />
+                <span>Ask Mitra for more details</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* The 4 Golden Rules for Digital Safety */}
       <div className="space-y-4">
@@ -310,8 +504,8 @@ export const ScamShieldPage: React.FC = () => {
           <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0f2942] font-display">
             The 4 Golden Rules of Digital Safety
           </h2>
-          <p className="text-sm sm:text-base text-stone-600 font-medium mt-0.5">
-            Memorize these simple principles to keep your bank savings 100% safe.
+          <p className="text-sm sm:text-base text-stone-600 font-semibold mt-0.5">
+            Memorize these simple principles to keep your bank savings safe and secure.
           </p>
         </div>
 

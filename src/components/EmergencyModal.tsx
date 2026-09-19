@@ -1,13 +1,14 @@
 import React from 'react';
-import { Phone, Heart, X, MessageCircle } from 'lucide-react';
+import { Phone, Heart, X, MessageCircle, Hospital } from 'lucide-react';
 import { playGentleChime } from '../utils/speech';
 
 interface EmergencyModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onNavigateToCare?: () => void;
 }
 
-export const EmergencyModal: React.FC<EmergencyModalProps> = ({ isOpen, onClose }) => {
+export const EmergencyModal: React.FC<EmergencyModalProps> = ({ isOpen, onClose, onNavigateToCare }) => {
   if (!isOpen) return null;
 
   const contacts = [
@@ -112,7 +113,7 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({ isOpen, onClose 
           </div>
 
           {/* Quick WhatsApp SOS button */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-2.5">
             <a
               id="send-whatsapp-sos-btn"
               href="https://wa.me/919876543210?text=Hello%20Sunita,%20I%20am%20using%20Mitra%20One%20app.%20Please%20give%20me%20a%20call%20when%20you%20are%20free."
@@ -123,6 +124,21 @@ export const EmergencyModal: React.FC<EmergencyModalProps> = ({ isOpen, onClose 
               <MessageCircle className="w-5 h-5" />
               <span>Send Quick WhatsApp Message to Daughter</span>
             </a>
+
+            {onNavigateToCare && (
+              <button
+                id="emergency-modal-care-btn"
+                onClick={() => {
+                  playGentleChime('tap');
+                  onClose();
+                  onNavigateToCare();
+                }}
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-[#f0fdfa] hover:bg-[#ccfbf1] text-[#0f766e] font-bold text-sm sm:text-base border border-[#99f6e4] transition-colors cursor-pointer"
+              >
+                <Hospital className="w-5 h-5" />
+                <span>Find Nearby Hospitals & Clinics</span>
+              </button>
+            )}
           </div>
         </div>
 
